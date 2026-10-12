@@ -6,11 +6,14 @@ import ChatArea from './components/ChatArea';
 import Login from './components/Login';
 import VideoModal from './components/VideoModal';
 
-// Fallback configuration for STUN servers
+// Configuración de servidores STUN para conectar celulares y redes externas
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' }
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
   ]
 };
 
@@ -59,6 +62,8 @@ function App() {
 
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
+  const pendingCandidatesRef = useRef([]);
+  const callerSocketIdRef = useRef('');
 
   // Aplicar tema en el body
   useEffect(() => {
@@ -203,18 +208,48 @@ function App() {
     const handleIncomingCall = ({ signal, from, fromSocketId, isVideo }) => {
       setCallerName(from);
       setCallerSocketId(fromSocketId);
+      callerSocketIdRef.current = fromSocketId;
       setIsVideoCall(isVideo);
       setIncomingSignal(signal);
       setCallState('incoming');
     };
 
-    const handleCallAccepted = async ({ signal }) => {
+    const handleCallAccepted = async ({ signal, fromSocketId }) => {
+      if (fromSocketId) {
+        setCallerSocketId(fromSocketId);
+        callerSocketIdRef.current = fromSocketId;
+      }
       if (pcRef.current && signal) {
         try {
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(signal));
           setCallState('connected');
+
+          // Flush any buffered candidates
+          while (pendingCandidatesRef.current.length > 0) {
+            const candidate = pendingCandidatesRef.current.shift();
+            try {
+              await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+              console.error('Error adding candidate in call_accepted:', e);
+            }
+          }
         } catch (err) {
-          console.error('Error setting remote description:', err);
+          console.error('Error setting remote description on call_accepted:', err);
+        }
+      }
+    };
+
+    const handleIceCandidate = async ({ candidate }) => {
+      if (pcRef.current && candidate) {
+        try {
+          if (pcRef.current.remoteDescription) {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          } else {
+            // Buffer candidate if remoteDescription is not ready
+            pendingCandidatesRef.current.push(candidate);
+          }
+        } catch (err) {
+          console.error('Error adding ICE candidate:', err);
         }
       }
     };
@@ -229,6 +264,7 @@ function App() {
     socket.on('user_left', handleUserLeft);
     socket.on('incoming_call', handleIncomingCall);
     socket.on('call_accepted', handleCallAccepted);
+    socket.on('ice_candidate', handleIceCandidate);
     socket.on('call_ended', handleCallEnded);
 
     return () => {
@@ -238,6 +274,7 @@ function App() {
       socket.off('user_left', handleUserLeft);
       socket.off('incoming_call', handleIncomingCall);
       socket.off('call_accepted', handleCallAccepted);
+      socket.off('ice_candidate', handleIceCandidate);
       socket.off('call_ended', handleCallEnded);
     };
   }, [user, currentRoom, appendMessage, fetchHistory, cleanupCall]);
@@ -319,6 +356,7 @@ function App() {
       setIsVideoCall(video);
       setCallState('calling');
       setCallerName(`#${currentRoom}`);
+      pendingCandidatesRef.current = [];
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video,
@@ -341,22 +379,26 @@ function App() {
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate === null && pc.localDescription) {
-          // Finished gathering ICE candidates
-          socket.emit('call_user', {
-            roomId: currentRoom,
-            signalData: pc.localDescription,
-            from: user,
-            isVideo: video,
+        if (event.candidate && socket.connected) {
+          socket.emit('ice_candidate', {
+            toSocketId: callerSocketIdRef.current,
+            candidate: event.candidate,
           });
         }
       };
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+
+      socket.emit('call_user', {
+        roomId: currentRoom,
+        signalData: offer,
+        from: user,
+        isVideo: video,
+      });
     } catch (err) {
       console.error('Error starting call:', err);
-      alert('No se pudo acceder al micrófono o cámara. Verifica los permisos de tu navegador.');
+      alert('No se pudo acceder al micrófono o cámara. Verifica los permisos en tu navegador.');
       cleanupCall();
     }
   };
@@ -384,17 +426,33 @@ function App() {
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate === null && pc.localDescription) {
-          socket.emit('answer_call', {
-            toSocketId: callerSocketId,
-            signal: pc.localDescription,
+        if (event.candidate && socket.connected) {
+          socket.emit('ice_candidate', {
+            toSocketId: callerSocketIdRef.current,
+            candidate: event.candidate,
           });
         }
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingSignal));
+
+      // Flush any queued ICE candidates
+      while (pendingCandidatesRef.current.length > 0) {
+        const candidate = pendingCandidatesRef.current.shift();
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.error('Error adding buffered candidate:', e);
+        }
+      }
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+
+      socket.emit('answer_call', {
+        toSocketId: callerSocketIdRef.current,
+        signal: answer,
+      });
     } catch (err) {
       console.error('Error accepting call:', err);
       cleanupCall();

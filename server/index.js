@@ -197,6 +197,16 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Intercambio continuo de ICE candidates (para conectar a través de diferentes redes/NATs)
+  socket.on('ice_candidate', ({ toSocketId, candidate }) => {
+    if (toSocketId) {
+      io.to(toSocketId).emit('ice_candidate', {
+        candidate,
+        fromSocketId: socket.id
+      });
+    }
+  });
+
   // Finalizar llamada
   socket.on('end_call', ({ toSocketId, roomId }) => {
     if (toSocketId) {

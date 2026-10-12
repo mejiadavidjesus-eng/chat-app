@@ -15,6 +15,7 @@ const VideoModal = ({
 }) => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -25,6 +26,11 @@ const VideoModal = ({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+    }
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      // Intento forzar reproducción por si el navegador bloquea autoplay
+      remoteAudioRef.current.play().catch((e) => console.log('Audio autoplay prevented:', e));
     }
   }, [remoteStream]);
 
@@ -50,6 +56,9 @@ const VideoModal = ({
 
         {/* Área de Video o Audio */}
         <div className="video-streams-grid">
+          {/* Audio siempre presente para garantizar recepción de voz */}
+          <audio ref={remoteAudioRef} autoPlay playsInline />
+
           {/* Video / Audio Remoto */}
           <div className="stream-card remote-stream-card">
             {isVideo && remoteStream ? (
@@ -65,7 +74,6 @@ const VideoModal = ({
                   {callerName ? callerName.charAt(0).toUpperCase() : 'U'}
                 </div>
                 <p>{callerName || 'Esperando conexión...'}</p>
-                <audio ref={remoteVideoRef} autoPlay playsInline />
               </div>
             )}
           </div>
