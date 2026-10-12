@@ -1,9 +1,15 @@
 import { io } from 'socket.io-client';
 
+const PRODUCTION_BACKEND_URL = 'https://chat-app-server-gvw2.onrender.com';
+
 const getSocketUrl = () => {
   if (process.env.REACT_APP_SOCKET_URL) return process.env.REACT_APP_SOCKET_URL;
-  const host = typeof window !== 'undefined' && window.location ? window.location.hostname : 'localhost';
-  return `http://${host}:3001`;
+  if (typeof window !== 'undefined' && window.location) {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `http://${window.location.hostname}:3001`;
+    }
+  }
+  return PRODUCTION_BACKEND_URL;
 };
 
 const SOCKET_URL = getSocketUrl();

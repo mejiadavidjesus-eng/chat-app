@@ -37,9 +37,9 @@ const Message = ({ message, isOwn }) => {
   const avatarColor = getAvatarColor(user);
   const initial = user ? user.charAt(0).toUpperCase() : '?';
 
-  const serverBaseUrl = typeof window !== 'undefined' && window.location
+  const serverBaseUrl = typeof window !== 'undefined' && window.location && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? `http://${window.location.hostname}:3001`
-    : 'http://localhost:3001';
+    : 'https://chat-app-server-gvw2.onrender.com';
 
   return (
     <div className={`message-item ${isOwn ? 'own-message' : 'other-message'}`}>
