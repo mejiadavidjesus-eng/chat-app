@@ -31,8 +31,12 @@ export const getApiBaseUrl = () => {
 };
 
 function App() {
-  const [darkMode, setDarkMode] = useState(true);
-  const [user, setUser] = useState(null);
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem('chat_theme') !== 'light';
+  });
+  const [user, setUser] = useState(() => {
+    return localStorage.getItem('chat_username') || null;
+  });
   const [currentRoom, setCurrentRoom] = useState('general');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [roomMessages, setRoomMessages] = useState({
@@ -60,8 +64,10 @@ function App() {
   useEffect(() => {
     if (darkMode) {
       document.body.classList.remove('light-theme');
+      localStorage.setItem('chat_theme', 'dark');
     } else {
       document.body.classList.add('light-theme');
+      localStorage.setItem('chat_theme', 'light');
     }
   }, [darkMode]);
 
@@ -432,12 +438,16 @@ function App() {
       socket.disconnect();
     }
     cleanupCall();
+    localStorage.removeItem('chat_username');
     setUser(null);
   };
 
   // Login handler
   const handleLogin = (nickname) => {
-    setUser(nickname);
+    if (nickname) {
+      localStorage.setItem('chat_username', nickname);
+      setUser(nickname);
+    }
   };
 
   if (!user) {
