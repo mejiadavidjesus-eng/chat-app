@@ -12,7 +12,8 @@ const ChatArea = ({
   onSendFile,
   onTyping,
   darkMode,
-  onOpenSidebar
+  onOpenSidebar,
+  onStartCall
 }) => {
   const [inputText, setInputText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -97,9 +98,31 @@ const ChatArea = ({
           <span className="channel-hash">#</span>
           <h2>{roomName}</h2>
         </div>
-        {roomDescription && (
-          <p className="chat-header-desc">{roomDescription}</p>
-        )}
+        <div className="chat-header-actions">
+          {onStartCall && (
+            <>
+              <button
+                type="button"
+                className="header-call-btn"
+                onClick={() => onStartCall(false)}
+                title="Llamada de voz"
+              >
+                📞
+              </button>
+              <button
+                type="button"
+                className="header-call-btn"
+                onClick={() => onStartCall(true)}
+                title="Videollamada"
+              >
+                📹
+              </button>
+            </>
+          )}
+          {roomDescription && (
+            <p className="chat-header-desc">{roomDescription}</p>
+          )}
+        </div>
       </header>
 
       {/* Messages View */}

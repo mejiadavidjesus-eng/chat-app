@@ -1,9 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 import socket from './socket';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import Login from './components/Login';
+import VideoModal from './components/VideoModal';
+
+// Fallback configuration for STUN servers
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
+  ]
+};
 
 const ROOMS = [
   { id: 'general', name: 'General', description: 'Canal principal para charlar de todo un poco' },
@@ -32,6 +41,20 @@ function App() {
     tech: [],
   });
   const [typingUsers, setTypingUsers] = useState([]);
+
+  // ================= WebRTC Call State =================
+  const [callState, setCallState] = useState(null); // null | 'calling' | 'incoming' | 'connected'
+  const [callerName, setCallerName] = useState('');
+  const [callerSocketId, setCallerSocketId] = useState('');
+  const [isVideoCall, setIsVideoCall] = useState(false);
+  const [incomingSignal, setIncomingSignal] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+
+  const pcRef = useRef(null);
+  const localStreamRef = useRef(null);
 
   // Aplicar tema en el body
   useEffect(() => {
@@ -82,6 +105,26 @@ function App() {
     }
   }, []);
 
+  // ================= Limpieza de llamadas =================
+  const cleanupCall = useCallback(() => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+    setLocalStream(null);
+    setRemoteStream(null);
+    setCallState(null);
+    setCallerName('');
+    setCallerSocketId('');
+    setIncomingSignal(null);
+    setIsMuted(false);
+    setIsVideoOff(false);
+  }, []);
+
   // Manejo de conexión y eventos de socket
   useEffect(() => {
     if (!user) return;
@@ -96,7 +139,7 @@ function App() {
     // Cargar historial
     fetchHistory(currentRoom);
 
-    // Mensaje recibido del servidor (el backend devuelve { id, roomId, username, content, createdAt })
+    // Mensaje recibido del servidor
     const handleMessage = (data) => {
       const targetRoom = data.roomId || currentRoom;
       appendMessage(targetRoom, {
@@ -146,23 +189,52 @@ function App() {
           isSystem: true,
           timestamp: new Date().toISOString(),
         });
-        // Also remove from typing
         setTypingUsers((prev) => prev.filter((u) => u !== username));
       }
+    };
+
+    // WebRTC Signaling listeners
+    const handleIncomingCall = ({ signal, from, fromSocketId, isVideo }) => {
+      setCallerName(from);
+      setCallerSocketId(fromSocketId);
+      setIsVideoCall(isVideo);
+      setIncomingSignal(signal);
+      setCallState('incoming');
+    };
+
+    const handleCallAccepted = async ({ signal }) => {
+      if (pcRef.current && signal) {
+        try {
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(signal));
+          setCallState('connected');
+        } catch (err) {
+          console.error('Error setting remote description:', err);
+        }
+      }
+    };
+
+    const handleCallEnded = () => {
+      cleanupCall();
     };
 
     socket.on('receive_message', handleMessage);
     socket.on('user_typing', handleTyping);
     socket.on('user_joined', handleUserJoined);
     socket.on('user_left', handleUserLeft);
+    socket.on('incoming_call', handleIncomingCall);
+    socket.on('call_accepted', handleCallAccepted);
+    socket.on('call_ended', handleCallEnded);
 
     return () => {
       socket.off('receive_message', handleMessage);
       socket.off('user_typing', handleTyping);
       socket.off('user_joined', handleUserJoined);
       socket.off('user_left', handleUserLeft);
+      socket.off('incoming_call', handleIncomingCall);
+      socket.off('call_accepted', handleCallAccepted);
+      socket.off('call_ended', handleCallEnded);
     };
-  }, [user, currentRoom, appendMessage, fetchHistory]);
+  }, [user, currentRoom, appendMessage, fetchHistory, cleanupCall]);
 
   // Cambiar de canal
   const handleSelectRoom = (newRoomId) => {
@@ -177,7 +249,7 @@ function App() {
     setSidebarOpen(false);
   };
 
-  // Enviar mensaje — NO agregar optimísticamente, esperar la respuesta del servidor
+  // Enviar mensaje
   const handleSendMessage = (text) => {
     if (!text.trim() || !user) return;
 
@@ -235,12 +307,131 @@ function App() {
     }
   };
 
+  // ===================== WebRTC Call Actions =====================
+  const handleStartCall = async (video) => {
+    try {
+      setIsVideoCall(video);
+      setCallState('calling');
+      setCallerName(`#${currentRoom}`);
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video,
+        audio: true,
+      });
+
+      setLocalStream(stream);
+      localStreamRef.current = stream;
+
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+      pcRef.current = pc;
+
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+          setCallState('connected');
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate === null && pc.localDescription) {
+          // Finished gathering ICE candidates
+          socket.emit('call_user', {
+            roomId: currentRoom,
+            signalData: pc.localDescription,
+            from: user,
+            isVideo: video,
+          });
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+    } catch (err) {
+      console.error('Error starting call:', err);
+      alert('No se pudo acceder al micrófono o cámara. Verifica los permisos de tu navegador.');
+      cleanupCall();
+    }
+  };
+
+  const handleAcceptCall = async () => {
+    try {
+      setCallState('connected');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: isVideoCall,
+        audio: true,
+      });
+
+      setLocalStream(stream);
+      localStreamRef.current = stream;
+
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+      pcRef.current = pc;
+
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate === null && pc.localDescription) {
+          socket.emit('answer_call', {
+            toSocketId: callerSocketId,
+            signal: pc.localDescription,
+          });
+        }
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingSignal));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+    } catch (err) {
+      console.error('Error accepting call:', err);
+      cleanupCall();
+    }
+  };
+
+  const handleEndCall = () => {
+    if (socket.connected) {
+      socket.emit('end_call', {
+        toSocketId: callerSocketId,
+        roomId: currentRoom,
+      });
+    }
+    cleanupCall();
+  };
+
+  const handleToggleMute = () => {
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  };
+
+  const handleToggleVideo = () => {
+    if (localStreamRef.current) {
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoOff(!videoTrack.enabled);
+      }
+    }
+  };
+
   // Cerrar sesión
   const handleLogout = () => {
     if (socket.connected) {
       socket.emit('leave_room', { roomId: currentRoom, username: user });
       socket.disconnect();
     }
+    cleanupCall();
     setUser(null);
   };
 
@@ -283,6 +474,22 @@ function App() {
         onTyping={handleTypingNotification}
         darkMode={darkMode}
         onOpenSidebar={() => setSidebarOpen(true)}
+        onStartCall={handleStartCall}
+      />
+
+      {/* Modal / Panel de Llamada y Videollamada */}
+      <VideoModal
+        callState={callState}
+        localStream={localStream}
+        remoteStream={remoteStream}
+        callerName={callerName}
+        isVideo={isVideoCall}
+        isMuted={isMuted}
+        isVideoOff={isVideoOff}
+        onToggleMute={handleToggleMute}
+        onToggleVideo={handleToggleVideo}
+        onAcceptCall={handleAcceptCall}
+        onEndCall={handleEndCall}
       />
     </div>
   );

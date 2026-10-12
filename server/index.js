@@ -165,6 +165,48 @@ io.on('connection', (socket) => {
     });
   });
 
+  // ===================== WebRTC Call Signaling =====================
+  // Iniciar llamada en una sala
+  socket.on('call_user', ({ userToCall, signalData, from, isVideo, roomId }) => {
+    // Si viene dirigido a un socket específico
+    if (userToCall) {
+      io.to(userToCall).emit('incoming_call', {
+        signal: signalData,
+        from,
+        fromSocketId: socket.id,
+        isVideo,
+        roomId
+      });
+    } else if (roomId) {
+      // O emitir a la sala que alguien está llamando
+      socket.to(roomId).emit('incoming_call', {
+        signal: signalData,
+        from,
+        fromSocketId: socket.id,
+        isVideo,
+        roomId
+      });
+    }
+  });
+
+  // Responder a una llamada
+  socket.on('answer_call', ({ toSocketId, signal }) => {
+    io.to(toSocketId).emit('call_accepted', {
+      signal,
+      fromSocketId: socket.id
+    });
+  });
+
+  // Finalizar llamada
+  socket.on('end_call', ({ toSocketId, roomId }) => {
+    if (toSocketId) {
+      io.to(toSocketId).emit('call_ended');
+    }
+    if (roomId) {
+      socket.to(roomId).emit('call_ended');
+    }
+  });
+
   // Desconexión
   socket.on('disconnect', () => {
     const userData = activeSockets.get(socket.id);
