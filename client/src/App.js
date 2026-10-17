@@ -42,12 +42,21 @@ function App() {
   });
   const [currentRoom, setCurrentRoom] = useState('general');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [roomMessages, setRoomMessages] = useState({
-    general: [],
-    random: [],
-    tech: [],
+  const [roomMessages, setRoomMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('chat_room_messages');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error parsing stored messages:', e);
+    }
+    return {
+      general: [],
+      random: [],
+      tech: [],
+    };
   });
   const [typingUsers, setTypingUsers] = useState([]);
+  const [installPrompt, setInstallPrompt] = useState(null);
 
   // ================= WebRTC Call State =================
   const [callState, setCallState] = useState(null); // null | 'calling' | 'incoming' | 'connected'
@@ -80,25 +89,62 @@ function App() {
     setDarkMode((prev) => !prev);
   };
 
-  // Agregar mensaje al estado local por sala
-  const appendMessage = useCallback((room, message) => {
-    setRoomMessages((prev) => ({
-      ...prev,
-      [room]: [...(prev[room] || []), message],
-    }));
+  // Escuchar evento PWA para permitir instalar la aplicación
+  useEffect(() => {
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
   }, []);
 
-  // Cargar historial de mensajes de la sala desde la API REST
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
+
+  // Guardar mensajes en localStorage cada vez que cambien para nunca perder el historial
+  useEffect(() => {
+    try {
+      localStorage.setItem('chat_room_messages', JSON.stringify(roomMessages));
+    } catch (e) {
+      console.error('Error saving messages to localStorage:', e);
+    }
+  }, [roomMessages]);
+
+  // Agregar mensaje al estado local por sala
+  const appendMessage = useCallback((room, message) => {
+    setRoomMessages((prev) => {
+      const existing = prev[room] || [];
+      // Evitar duplicados por id
+      if (existing.some((m) => m.id === message.id)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [room]: [...existing, message],
+      };
+    });
+  }, []);
+
+  // Cargar historial de mensajes de la sala desde la API REST y mezclarlo con lo local
   const fetchHistory = useCallback(async (roomId) => {
     try {
       const apiBase = getApiBaseUrl();
       const res = await fetch(`${apiBase}/api/messages/${roomId}`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
-          setRoomMessages((prev) => ({
-            ...prev,
-            [roomId]: data.map((msg) => ({
+        if (Array.isArray(data) && data.length > 0) {
+          setRoomMessages((prev) => {
+            const currentList = prev[roomId] || [];
+            const serverMsgs = data.map((msg) => ({
               id: msg.id,
               user: msg.username,
               text: msg.content,
@@ -107,8 +153,21 @@ function App() {
               fileUrl: msg.fileUrl || null,
               fileName: msg.fileName || null,
               fileType: msg.fileType || null,
-            })),
-          }));
+            }));
+
+            // Combinar evitando duplicados
+            const combined = [...serverMsgs];
+            currentList.forEach((c) => {
+              if (!combined.some((m) => m.id === c.id)) {
+                combined.push(c);
+              }
+            });
+
+            return {
+              ...prev,
+              [roomId]: combined,
+            };
+          });
         }
       }
     } catch (err) {
@@ -530,6 +589,8 @@ function App() {
         onLogout={handleLogout}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        installPrompt={installPrompt}
+        onInstallApp={handleInstallApp}
       />
       <ChatArea
         roomName={activeRoomObj.name}

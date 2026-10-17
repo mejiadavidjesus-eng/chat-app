@@ -20,6 +20,7 @@ const ChatArea = ({
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
+  const inputRef = useRef(null);
 
   // Auto-scroll to bottom whenever messages or typing change
   useEffect(() => {
@@ -27,15 +28,17 @@ const ChatArea = ({
   }, [messages, typingUsers]);
 
   const handleInputChange = (e) => {
-    const val = e.target.value;
-    setInputText(val);
+    const text = e.target.value;
+    setInputText(text);
 
     if (onTyping) {
       onTyping(true);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
       typingTimeoutRef.current = setTimeout(() => {
         onTyping(false);
-      }, 1500);
+      }, 2000);
     }
   };
 
@@ -44,16 +47,19 @@ const ChatArea = ({
     const trimmed = inputText.trim();
     if (!trimmed) return;
 
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    if (onTyping) {
-      onTyping(false);
-    }
-
     onSendMessage(trimmed);
     setInputText('');
     setShowEmojiPicker(false);
+
+    if (onTyping) {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      onTyping(false);
+    }
+
+    // Regresar el foco al input
+    inputRef.current?.focus();
   };
 
   const handleKeyDown = (e) => {
@@ -65,6 +71,7 @@ const ChatArea = ({
 
   const handleEmojiSelect = (emoji) => {
     setInputText((prev) => prev + emoji);
+    inputRef.current?.focus();
   };
 
   const handleFileChange = (e) => {
@@ -81,7 +88,7 @@ const ChatArea = ({
   );
 
   return (
-    <main className="chat-area">
+    <main className="chat-area" aria-label={`Área de mensajes del canal ${roomName}`}>
       {/* Header */}
       <header className="chat-header">
         <div className="chat-header-title">
@@ -90,12 +97,13 @@ const ChatArea = ({
               type="button"
               className="menu-toggle-btn"
               onClick={onOpenSidebar}
-              title="Abrir menú"
+              title="Abrir menú de canales"
+              aria-label="Abrir menú lateral de canales"
             >
               ☰
             </button>
           )}
-          <span className="channel-hash">#</span>
+          <span className="channel-hash" aria-hidden="true">#</span>
           <h2>{roomName}</h2>
         </div>
         <div className="chat-header-actions">
@@ -105,7 +113,8 @@ const ChatArea = ({
                 type="button"
                 className="header-call-btn"
                 onClick={() => onStartCall(false)}
-                title="Llamada de voz"
+                title="Iniciar llamada de voz"
+                aria-label="Iniciar llamada de voz"
               >
                 📞
               </button>
@@ -113,7 +122,8 @@ const ChatArea = ({
                 type="button"
                 className="header-call-btn"
                 onClick={() => onStartCall(true)}
-                title="Videollamada"
+                title="Iniciar videollamada"
+                aria-label="Iniciar videollamada con cámara"
               >
                 📹
               </button>
@@ -126,10 +136,10 @@ const ChatArea = ({
       </header>
 
       {/* Messages View */}
-      <div className="messages-container">
+      <div className="messages-container" role="log" aria-live="polite" aria-label="Historial de mensajes">
         {messages.length === 0 ? (
           <div className="empty-messages">
-            <div className="empty-icon">💬</div>
+            <div className="empty-icon" aria-hidden="true">💬</div>
             <h3>¡Bienvenido a #{roomName}!</h3>
             <p>Este es el inicio de la sala. ¡Envía el primer mensaje!</p>
           </div>
@@ -146,10 +156,10 @@ const ChatArea = ({
       </div>
 
       {/* Typing indicator */}
-      <div className="typing-indicator-wrapper">
+      <div className="typing-indicator-wrapper" aria-live="polite">
         {otherTypingUsers.length > 0 && (
           <div className="typing-indicator">
-            <span className="typing-dots">
+            <span className="typing-dots" aria-hidden="true">
               <span></span>
               <span></span>
               <span></span>
@@ -173,20 +183,22 @@ const ChatArea = ({
           />
         )}
 
-        <form onSubmit={handleSend} className="chat-form">
+        <form onSubmit={handleSend} className="chat-form" aria-label="Formulario para enviar mensaje">
           <input
             type="file"
             ref={fileInputRef}
             style={{ display: 'none' }}
             onChange={handleFileChange}
             accept="image/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+            aria-hidden="true"
           />
 
           <button
             type="button"
             className="emoji-toggle-btn attach-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Adjuntar archivo"
+            title="Adjuntar archivo o imagen"
+            aria-label="Adjuntar archivo o imagen"
           >
             📎
           </button>
@@ -196,17 +208,22 @@ const ChatArea = ({
             className="emoji-toggle-btn"
             onClick={() => setShowEmojiPicker((prev) => !prev)}
             title="Seleccionar emoji"
+            aria-label="Abrir selector de emojis"
+            aria-expanded={showEmojiPicker}
           >
             😊
           </button>
 
           <input
+            ref={inputRef}
             type="text"
             className="chat-input"
             placeholder={`Enviar mensaje a #${roomName}...`}
             value={inputText}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            aria-label={`Mensaje para #${roomName}`}
+            autoComplete="off"
           />
 
           <button
@@ -214,12 +231,14 @@ const ChatArea = ({
             className="send-btn"
             disabled={!inputText.trim()}
             title="Enviar mensaje"
+            aria-label="Enviar mensaje"
           >
             <svg
               viewBox="0 0 24 24"
               width="20"
               height="20"
               fill="currentColor"
+              aria-hidden="true"
             >
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
             </svg>

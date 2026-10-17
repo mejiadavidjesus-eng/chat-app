@@ -9,13 +9,15 @@ const Sidebar = ({
   username,
   onLogout,
   isOpen,
-  onClose
+  onClose,
+  installPrompt,
+  onInstallApp
 }) => {
   return (
-    <aside className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
+    <aside className={`sidebar ${isOpen ? 'sidebar-open' : ''}`} aria-label="Menú principal de canales y opciones">
       <div className="sidebar-header">
         <div className="app-brand">
-          <span className="brand-icon">⚡</span>
+          <span className="brand-icon" aria-hidden="true">⚡</span>
           <span className="brand-title">DevChat</span>
         </div>
         {onClose && (
@@ -24,13 +26,27 @@ const Sidebar = ({
             className="sidebar-close-btn"
             onClick={onClose}
             title="Cerrar menú"
+            aria-label="Cerrar menú lateral"
           >
             ✕
           </button>
         )}
       </div>
 
-      <div className="sidebar-section">
+      {installPrompt && (
+        <div className="pwa-install-banner">
+          <button
+            type="button"
+            className="pwa-install-btn"
+            onClick={onInstallApp}
+            aria-label="Instalar DevChat en el dispositivo"
+          >
+            <span aria-hidden="true">📲</span> Instalar como App
+          </button>
+        </div>
+      )}
+
+      <nav className="sidebar-section" aria-label="Lista de canales">
         <div className="section-title">CANALES</div>
         <ul className="room-list">
           {rooms.map((room) => {
@@ -41,8 +57,10 @@ const Sidebar = ({
                   type="button"
                   className={`room-item ${isActive ? 'active' : ''}`}
                   onClick={() => onSelectRoom(room.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={`Canal ${room.name}`}
                 >
-                  <span className="room-prefix">#</span>
+                  <span className="room-prefix" aria-hidden="true">#</span>
                   <span className="room-name">{room.name}</span>
                   {room.badge && (
                     <span className="room-badge">{room.badge}</span>
@@ -52,16 +70,18 @@ const Sidebar = ({
             );
           })}
         </ul>
-      </div>
+      </nav>
 
       <div className="sidebar-footer">
         <div className="user-profile">
-          <div className="user-avatar">
+          <div className="user-avatar" aria-hidden="true">
             {username ? username.charAt(0).toUpperCase() : 'U'}
           </div>
           <div className="user-info">
             <span className="user-name">{username}</span>
-            <span className="user-status">En línea</span>
+            <span className="user-status">
+              <span className="status-dot" aria-hidden="true">●</span> En línea
+            </span>
           </div>
         </div>
 
@@ -71,8 +91,9 @@ const Sidebar = ({
             className="theme-toggle-btn"
             onClick={onToggleDarkMode}
             title={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            aria-label={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
           >
-            {darkMode ? '☀️' : '🌙'}
+            <span aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
           </button>
           {onLogout && (
             <button
@@ -80,8 +101,9 @@ const Sidebar = ({
               className="logout-btn"
               onClick={onLogout}
               title="Cerrar sesión"
+              aria-label="Cerrar sesión y cambiar apodo"
             >
-              🚪
+              <span aria-hidden="true">🚪</span>
             </button>
           )}
         </div>

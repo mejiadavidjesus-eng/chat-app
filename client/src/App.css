@@ -1174,3 +1174,79 @@ body {
   color: #fff;
   font-size: 1.6rem;
 }
+
+/* ==========================================================================
+   PWA Installation Banner & Accessibility Enhancements
+   ========================================================================== */
+.pwa-install-banner {
+  padding: 0.5rem 0.85rem;
+  margin: 0.25rem 0.75rem 0.5rem 0.75rem;
+}
+
+.pwa-install-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, var(--accent-primary), #ec4899);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pwa-install-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(99, 102, 241, 0.45);
+}
+
+.pwa-install-btn:active {
+  transform: translateY(0);
+}
+
+.status-dot {
+  color: #22c55e;
+  font-size: 0.75rem;
+  margin-right: 0.2rem;
+  display: inline-block;
+  animation: pulse 2s infinite;
+}
+
+/* Foco accesible de teclado (WCAG A11y) */
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Área segura para iPhone (Notch / Barra de gestos) */
+@supports (padding: max(0px)) {
+  .chat-input-wrapper {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Mejoras de accesibilidad táctil para móviles */
+@media (max-width: 768px) {
+  .emoji-toggle-btn,
+  .attach-btn,
+  .menu-toggle-btn,
+  .sidebar-close-btn,
+  .header-call-btn,
+  .theme-toggle-btn,
+  .logout-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .room-item {
+    min-height: 44px;
+  }
+}
